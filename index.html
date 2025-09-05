@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Text Analyzer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 30px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            padding: 15px;
+            font-size: 16px;
+            resize: vertical;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #5a6fd8;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .results {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            min-height: 200px;
+        }
+
+        .result-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+        }
+
+        .result-item h3 {
+            margin: 0 0 5px 0;
+            color: #333;
+        }
+
+        .result-item p {
+            margin: 0;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Smart Text Analyzer</h1>
+        
+        <div class="main-content">
+            <div>
+                <h2>Enter Your Text</h2>
+                <textarea id="textInput" placeholder="Paste your text here...">This is amazing! I love how technology is making our lives better every day. The future looks bright with AI helping us solve complex problems.</textarea>
+                <button id="analyzeBtn">🔍 Analyze Text</button>
+            </div>
+            
+            <div>
+                <h2>Analysis Results</h2>
+                <div id="results" class="results">
+                    <div class="result-item">
+                        <h3>Ready to Analyze</h3>
+                        <p>Enter some text and click "Analyze Text" to see results.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class TextAnalyzer {
+            constructor() {
+                this.textInput = document.getElementById('textInput');
+                this.analyzeBtn = document.getElementById('analyzeBtn');
+                this.results = document.getElementById('results');
+                this.apiToken = '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';
+                this.init();
+            }
+
+            init() {
+                this.analyzeBtn.addEventListener('click', () => {
+                    this.analyzeText();
+                });
+            }
+
+            async analyzeText() {
+                const text = this.textInput.value.trim();
+                
+                if (!text) {
+                    alert('Please enter some text!');
+                    return;
+                }
+
+                this.analyzeBtn.disabled = true;
+                this.analyzeBtn.innerHTML = '🔄 Analyzing...';
+
+                // Basic text analysis
+                const words = text.split(/\s+/).filter(word => word.length > 0);
+                const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+                
+                // Get sentiment - try AI first, fallback to simple method
+                let sentiment;
+                try {
+                    sentiment = await this.getAISentiment(text.slice(0, 500));
+                } catch (error) {
+                    sentiment = this.getSimpleSentiment(text);
+                }
+
+                // Display results
+                this.displayResults({
+                    wordCount: words.length,
+                    sentenceCount: sentences.length,
+                    readingTime: Math.ceil(words.length / 200),
+                    sentiment: sentiment
+                });
+
+                this.analyzeBtn.disabled = false;
+                this.analyzeBtn.innerHTML = '🔍 Analyze Text';
+            }
+
+            async getAISentiment(text) {
+                const response = await fetch('https://api-inference.huggingface.co/models/siebert/sentiment-roberta-large-english', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${this.apiToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ inputs: text })
+                });
+
+                if (!response.ok) {
+                    throw new Error('API failed');
+                }
+
+                const data = await response.json();
+                
+                if (data[0] && Array.isArray(data[0])) {
+                    const results = data[0];
+                    const topResult = results.reduce((max, current) => 
+                        current.score > max.score ? current : max
+                    );
+                    
+                    let sentimentType = 'neutral';
+                    if (topResult.label === 'POSITIVE') {
+                        sentimentType = 'positive';
+                    } else if (topResult.label === 'NEGATIVE') {
+                        sentimentType = 'negative';
+                    }
+                    
+                    return {
+                        type: sentimentType,
+                        confidence: Math.round(topResult.score * 100),
+                        source: 'AI'
+                    };
+                }
+                
+                throw new Error('Invalid response');
+            }
+
+            getSimpleSentiment(text) {
+                const positiveWords = ['good', 'great', 'love', 'amazing', 'excellent', 'happy', 'wonderful', 'fantastic', 'awesome', 'perfect', 'bright', 'better'];
+                const negativeWords = ['bad', 'hate', 'terrible', 'awful', 'sad', 'angry', 'horrible', 'frustrated', 'worst', 'disappointed'];
+                
+                const lowerText = text.toLowerCase();
+                let positiveCount = 0;
+                let negativeCount = 0;
+                
+                positiveWords.forEach(word => {
+                    if (lowerText.includes(word)) positiveCount++;
+                });
+                
+                negativeWords.forEach(word => {
+                    if (lowerText.includes(word)) negativeCount++;
+                });
+                
+                if (positiveCount > negativeCount) {
+                    return { type: 'positive', confidence: 80, source: 'Simple' };
+                } else if (negativeCount > positiveCount) {
+                    return { type: 'negative', confidence: 80, source: 'Simple' };
+                } else {
+                    return { type: 'neutral', confidence: 70, source: 'Simple' };
+                }
+            }
+
+            displayResults(analysis) {
+                const sentimentEmoji = analysis.sentiment.type === 'positive' ? '😊' : 
+                                     analysis.sentiment.type === 'negative' ? '😞' : '😐';
+                const sentimentColor = analysis.sentiment.type === 'positive' ? '#27ae60' : 
+                                     analysis.sentiment.type === 'negative' ? '#e74c3c' : '#f39c12';
+                
+                // Emotion emojis
+                const emotionEmojis = {
+                    joy: '😄', sadness: '😢', anger: '😠', fear: '😨', 
+                    surprise: '😮', disgust: '🤢', love: '❤️', unknown: '❓'
+                };
+                
+                let emotionsHTML = '';
+                if (analysis.emotions && analysis.emotions.top_emotion !== 'unknown') {
+                    const topEmotion = analysis.emotions.top_emotion;
+                    const emoji = emotionEmojis[topEmotion] || '😐';
+                    
+                    emotionsHTML = `
+                    <div class="result-item">
+                        <h3>${emoji} Emotion Analysis</h3>
+                        <p>
+                            <strong>${topEmotion.charAt(0).toUpperCase() + topEmotion.slice(1)}</strong>
+                            (${analysis.emotions.confidence}% confidence)
+                            <br><small>Analysis: ${analysis.emotions.source}</small>
+                        </p>
+                    </div>`;
+                }
+                
+                this.results.innerHTML = `
+                    <div class="result-item">
+                        <h3>📊 Basic Stats</h3>
+                        <p>Words: ${analysis.wordCount} | Sentences: ${analysis.sentenceCount}</p>
+                    </div>
+                    <div class="result-item">
+                        <h3>⏱️ Reading Time</h3>
+                        <p>${analysis.readingTime} minute(s)</p>
+                    </div>
+                    <div class="result-item">
+                        <h3>${sentimentEmoji} Sentiment Analysis</h3>
+                        <p>
+                            <strong style="color: ${sentimentColor}">
+                                ${analysis.sentiment.type.charAt(0).toUpperCase() + analysis.sentiment.type.slice(1)}
+                            </strong>
+                            (${analysis.sentiment.confidence}% confidence)
+                            <br><small>Analysis: ${analysis.sentiment.source}</small>
+                        </p>
+                    </div>
+                    ${emotionsHTML}
+                `;
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new TextAnalyzer();
+        });
+    </script>
+</body>
+</html>
